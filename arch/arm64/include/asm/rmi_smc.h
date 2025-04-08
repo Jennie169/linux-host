@@ -46,7 +46,7 @@
 #define SMC_RMI_RTT_SET_RIPAS		SMC_RMI_CALL(0x0169)
 
 #define RMI_ABI_MAJOR_VERSION	1
-#define RMI_ABI_MINOR_VERSION	0
+#define RMI_ABI_MINOR_VERSION	1
 
 #define RMI_ABI_VERSION_GET_MAJOR(version) ((version) >> 16)
 #define RMI_ABI_VERSION_GET_MINOR(version) ((version) & 0xFFFF)
