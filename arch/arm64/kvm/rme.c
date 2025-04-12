@@ -1337,6 +1337,15 @@ static int config_realm_hash_algo(struct realm *realm,
 	return 0;
 }
 
+static int config_realm_num_aux_planes(struct realm *realm,
+				       struct arm_rme_config *cfg)
+{
+	if (cfg->num_aux_planes > RMI_MAX_AUX_PLANES_NUM)
+		return -EINVAL;
+	realm->params->num_aux_planes = cfg->num_aux_planes;
+	return 0;
+}
+
 static int kvm_rme_config_realm(struct kvm *kvm, struct kvm_enable_cap *cap)
 {
 	struct arm_rme_config cfg;
@@ -1355,6 +1364,9 @@ static int kvm_rme_config_realm(struct kvm *kvm, struct kvm_enable_cap *cap)
 		break;
 	case ARM_RME_CONFIG_HASH_ALGO:
 		r = config_realm_hash_algo(realm, &cfg);
+		break;
+	case ARM_RME_CONFIG_NUM_AUX_PLANES:
+		r = config_realm_num_aux_planes(realm, &cfg);
 		break;
 	default:
 		r = -EINVAL;

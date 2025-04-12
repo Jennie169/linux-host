@@ -426,6 +426,7 @@ enum {
 /* List of configuration items accepted for KVM_CAP_ARM_RME_CONFIG_REALM */
 #define ARM_RME_CONFIG_RPV			0
 #define ARM_RME_CONFIG_HASH_ALGO		1
+#define ARM_RME_CONFIG_NUM_AUX_PLANES		2
 
 #define ARM_RME_CONFIG_MEASUREMENT_ALGO_SHA256		0
 #define ARM_RME_CONFIG_MEASUREMENT_ALGO_SHA512		1
@@ -443,6 +444,11 @@ struct arm_rme_config {
 		/* cfg == ARM_RME_CONFIG_HASH_ALGO */
 		struct {
 			__u32	hash_algo;
+		};
+
+		/* cfg == ARM_RME_CONFIG_NUM_AUX_PLANES */
+		struct {
+			__u32	num_aux_planes;
 		};
 
 		/* Fix the size of the union */
