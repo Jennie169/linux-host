@@ -280,6 +280,7 @@ enum fgt_group_id {
 
 struct kvm_arch {
 	struct kvm_s2_mmu mmu;
+	struct kvm_s2_mmu aux_mmu[RMI_MAX_AUX_PLANES_NUM];
 
 	/*
 	 * Fine-Grained UNDEF, mimicking the FGT layout defined by the

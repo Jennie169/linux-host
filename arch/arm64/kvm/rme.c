@@ -407,8 +407,8 @@ static int realm_create_rd(struct kvm *kvm)
 	phys_addr_t rd_phys, params_phys;
 	size_t pgd_size = kvm_pgtable_stage2_pgd_size(kvm->arch.mmu.vtcr);
 	u64 dfr0 = kvm_read_vm_id_reg(kvm, SYS_ID_AA64DFR0_EL1);
-	int i, r;
-	int rtt_num_start;
+	int i, r, j;
+	int rtt_num_start,num_aux_planes;
 
 	realm->ia_bits = VTCR_EL2_IPA(kvm->arch.mmu.vtcr);
 	rtt_num_start = realm_num_root_rtts(realm);
@@ -438,11 +438,29 @@ static int realm_create_rd(struct kvm *kvm)
 		}
 	}
 
+	for (i = 0; i < RMI_MAX_AUX_PLANES_NUM; i++) {
+		for (j = 0; j < pgd_size; j += RMM_PAGE_SIZE) {
+		phys_addr_t pgd_phys = kvm->arch.aux_mmu[i].pgd_phys + j;
+
+		if (rmi_granule_delegate(pgd_phys)) {
+			r = -ENXIO;
+			goto out_undelegate_tables;
+		}
+	}
+	}
+
+	num_aux_planes = params->num_aux_planes;
 	params->s2sz = VTCR_EL2_IPA(kvm->arch.mmu.vtcr);
 	params->rtt_level_start = get_start_level(realm);
 	params->rtt_num_start = rtt_num_start;
 	params->rtt_base = kvm->arch.mmu.pgd_phys;
+	for (i = 0; i < RMI_MAX_AUX_PLANES_NUM; i++) {
+		params->aux_rtt_base[i] = kvm->arch.aux_mmu[i].pgd_phys;
+	}
 	params->vmid = realm->vmid;
+	for (i = 0; i < num_aux_planes; i++) {
+		params->aux_vmid[i] = realm->aux_vmid[i];
+	}
 	params->num_bps = SYS_FIELD_GET(ID_AA64DFR0_EL1, BRPs, dfr0);
 	params->num_wps = SYS_FIELD_GET(ID_AA64DFR0_EL1, WRPs, dfr0);
 
@@ -450,6 +468,8 @@ static int realm_create_rd(struct kvm *kvm)
 		params->pmu_num_ctrs = kvm->arch.pmcr_n;
 		params->flags |= RMI_REALM_PARAM_FLAG_PMU;
 	}
+
+	params->flags1 |= RMI_REALM_FLAGS1_RTT_TREE_PP;
 
 	r = realm_init_sve_param(kvm, params);
 	if (r)
@@ -483,6 +503,20 @@ out_undelegate_tables:
 			break;
 		}
 	}
+	for (i = 0; i < RMI_MAX_AUX_PLANES_NUM; i++) {
+		while (j > 0) {
+			j -= RMM_PAGE_SIZE;
+
+			phys_addr_t pgd_phys = kvm->arch.aux_mmu[i].pgd_phys + j;
+
+			if (WARN_ON(rmi_granule_undelegate(pgd_phys))) {
+				/* Leak the pages if they cannot be returned */
+				kvm->arch.aux_mmu[i].pgt = NULL;
+				break;
+			}
+	}	
+	}
+		
 	if (WARN_ON(rmi_granule_undelegate(rd_phys))) {
 		/* Leak the page if it isn't returned */
 		return r;
@@ -1290,8 +1324,12 @@ static void rme_vmid_release(unsigned int vmid)
 
 static int kvm_create_realm(struct kvm *kvm)
 {
-	struct realm *realm = &kvm->arch.realm;
-	int ret;
+	struct realm* realm = &kvm->arch.realm;
+	struct realm_params* params = realm->params;
+	int num_aux_planes;
+	int ret, i;
+
+	num_aux_planes = params->num_aux_planes;
 
 	if (!kvm_is_realm(kvm))
 		return -EINVAL;
@@ -1303,9 +1341,19 @@ static int kvm_create_realm(struct kvm *kvm)
 		return ret;
 	realm->vmid = ret;
 
+	for (i = 0; i < num_aux_planes; i++) {
+		ret = rme_vmid_reserve();
+		if (ret < 0)
+			return ret;
+		realm->aux_vmid[i] = ret;
+	}
+
 	ret = realm_create_rd(kvm);
 	if (ret) {
 		rme_vmid_release(realm->vmid);
+		for (i = 0; i < num_aux_planes; i++) {
+			rme_vmid_release(realm->aux_vmid[i]);
+		}
 		return ret;
 	}
 
@@ -1426,9 +1474,11 @@ int kvm_realm_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap)
 
 void kvm_destroy_realm(struct kvm *kvm)
 {
-	struct realm *realm = &kvm->arch.realm;
+	struct realm* realm = &kvm->arch.realm;
+	struct realm_params* params = realm->params;
+	int num_aux_planes = params->num_aux_planes;;
 	size_t pgd_size = kvm_pgtable_stage2_pgd_size(kvm->arch.mmu.vtcr);
-	int i;
+	int i, j;
 
 	if (realm->params) {
 		free_page((unsigned long)realm->params);
@@ -1450,12 +1500,24 @@ void kvm_destroy_realm(struct kvm *kvm)
 	}
 
 	rme_vmid_release(realm->vmid);
+	for (i = 0; i < num_aux_planes; i++) {
+		rme_vmid_release(realm->aux_vmid[i]);
+	}
 
 	for (i = 0; i < pgd_size; i += RMM_PAGE_SIZE) {
 		phys_addr_t pgd_phys = kvm->arch.mmu.pgd_phys + i;
 
 		if (WARN_ON(rmi_granule_undelegate(pgd_phys)))
 			return;
+	}
+
+	for (i = 0; i < RMI_MAX_AUX_PLANES_NUM; i++) {
+		for (j = 0; j < pgd_size; j += RMM_PAGE_SIZE) {
+			phys_addr_t pgd_phys = kvm->arch.aux_mmu[i].pgd_phys + j;
+
+			if (WARN_ON(rmi_granule_undelegate(pgd_phys)))
+				return;
+	}
 	}
 
 	WRITE_ONCE(realm->state, REALM_STATE_DEAD);

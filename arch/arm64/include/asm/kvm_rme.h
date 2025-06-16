@@ -64,6 +64,8 @@ struct realm {
 	unsigned long num_aux;
 	unsigned int vmid;
 	unsigned int ia_bits;
+	unsigned int aux_vmid[RMI_MAX_AUX_PLANES_NUM];
+
 };
 
 /**

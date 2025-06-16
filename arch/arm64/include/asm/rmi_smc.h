@@ -92,6 +92,9 @@ enum rmi_ripas {
 #define RMI_REALM_PARAM_FLAG_SVE		BIT(1)
 #define RMI_REALM_PARAM_FLAG_PMU		BIT(2)
 
+#define RMI_REALM_FLAGS1_RTT_TREE_PP		BIT(0)
+#define RMI_REALM_FLAGS1_S2AP_ENC_IND		BIT(1)
+
 #define RMI_MAX_AUX_PLANES_NUM			3
 
 /*
@@ -131,9 +134,10 @@ struct realm_params {
 	union { /* 0xf00 */
 		struct {
 			u16 aux_vmid[RMI_MAX_AUX_PLANES_NUM];
+			u8 padding3[0x7A];
 			u64 aux_rtt_base[RMI_MAX_AUX_PLANES_NUM];
 		};
-		u8 padding3[0x100];
+		u8 padding4[0x100];
 	};
 };
 

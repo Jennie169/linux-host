@@ -169,7 +169,7 @@ static int kvm_arm_default_max_vcpus(void)
  */
 int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 {
-	int ret;
+	int ret, i;
 
 	mutex_init(&kvm->arch.config_lock);
 
@@ -215,6 +215,13 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	ret = kvm_init_stage2_mmu(kvm, &kvm->arch.mmu, type);
 	if (ret)
 		goto err_free_cpumask;
+	
+	for (i = 0; i < RMI_MAX_AUX_PLANES_NUM; i++) {
+		ret = kvm_init_stage2_mmu(kvm, &kvm->arch.aux_mmu[i], type);
+		if (ret) {
+			goto err_free_cpumask;
+		}
+	}
 
 	kvm_vgic_early_init(kvm);
 
@@ -230,8 +237,9 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	/* Initialise the realm bits after the generic bits are enabled */
 	if (kvm_is_realm(kvm)) {
 		ret = kvm_init_realm_vm(kvm);
-		if (ret)
+		if (ret) {
 			goto err_free_cpumask;
+		}
 	}
 
 	return 0;
